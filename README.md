@@ -10,8 +10,8 @@ We are currently gathering empirical data to train our ML models. This involves 
 - `lambda_function.py`: The code running in AWS Lambda that performs the cloud resizing.
 - `download_dataset.py`: Script to download 1,000 real-world images from the Unsplash dataset.
 - `AWS_SETUP_GUIDE.md`: A detailed mapping of how to set up the AWS infrastructure.
+- `PI_SETUP_GUIDE.md` : Might be helpful when running the benchmark on the Raspberry PI
 - `images/`: Local directory containing the Unsplash dataset.
-- `PROGRESS.md`: Journal of technical decisions and implementation status.
 
 ## Prerequisites
 1. **Python 3.10+**
