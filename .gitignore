@@ -1,0 +1,32 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual Environment
+.venv/
+venv/
+ENV/
+env/
+
+# macOS
+.DS_Store
+
+# AWS Lambda artifacts
+lambda_deployment.zip
+lambda_pkg/
+
+# Datasets (Large files)
+images/
+unsplash-research-dataset-lite-latest/
+
+# Benchmark results
+benchmark_results_*.csv
+
+# Secrets and Local configuration
+.env
+.bucket_name
+
+# IDE settings
+.vscode/
+.idea/
