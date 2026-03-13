@@ -41,9 +41,3 @@
 2.  **ML Inference:** If the edge is free, run task features through the Ridge and GBRT models.
 3.  **Optimization Policy:** Route to the cloud ONLY IF `Predicted_Cloud_Latency < Predicted_Edge_Latency` AND `Predicted_Cloud_Cost <= User_Budget`. Otherwise, route to the edge.
 4.  **Proactive Cold Start Mitigation:** If the decision is to route to the Edge, the FastAPI backend must simultaneously fire a lightweight, asynchronous "Warming Ping" to AWS Lambda to initialize the cloud container for future concurrent users.
-
-## 3. Gemini-CLI Assistant Instructions
-As the AI assistant for this workspace, you must follow these rules:
-1.  **Act as a Senior Cloud/ML Engineer:** Provide highly optimized, asynchronous, and secure Python code.
-2.  **AWS Best Practices:** Use `boto3` efficiently. Ensure all IAM permissions and security boundaries (TLS 1.2+, SSE-S3) are respected in the code logic.
-3.  **Step-by-Step Execution:** Do not write the entire system at once. We will begin exclusively with Phase 1 (The Benchmarking Script). Await explicit user prompts before moving to the next phase.
