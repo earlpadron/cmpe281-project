@@ -7,13 +7,21 @@ from io import BytesIO
 s3 = boto3.client('s3')
 
 def lambda_handler(event, context):
-    """ (COPY THIS FUNCTION INTO LAMBDA) AWS Lambda function to process an image from S3. It resizes the image to 800x800 and returns the processing latency. """
+    """ AWS Lambda function to process an image from S3. It resizes the image to 800x800 and returns the processing latency. """
     try:
+        # Catch proactive warming ping
+        if 'warm_ping' in event:
+            print("Warming ping received. Container initialized.")
+            return {
+                'statusCode': 200,
+                'body': json.dumps({'message': 'Container warmed successfully.'})
+            }
+
         # get bucket and key from the event
         bucket = event['bucket']
         key = event['key']
 
-        # download image from S3 to memory
+        # download image from S3 to memroy
         response = s3.get_object(Bucket=bucket, Key=key)
         img_data = response['Body'].read()
 
@@ -30,7 +38,7 @@ def lambda_handler(event, context):
         buffer.seek(0)
 
         # upload the resized image back to S3
-        # 'resized/' prefix to keep things organized
+        # we add 'resized/' prefix to keep things organized
         new_key = f"resized/{key}"
         s3.put_object(Bucket=bucket, Key=new_key, Body=buffer, ContentType=f"image/{img_format.lower()}")
 

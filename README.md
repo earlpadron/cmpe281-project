@@ -18,7 +18,7 @@ We are currently gathering empirical data to train our ML models. This involves 
 2. **AWS CLI** configured with `aws configure`.
 3. **Python Libraries:**
    ```bash
-   pip install boto3 pillow psutil pandas tqdm requests
+   pip install boto3 pillow psutil pandas tqdm requests "fastapi[standard]" uvicorn
    ```
 
 ## Getting Started
