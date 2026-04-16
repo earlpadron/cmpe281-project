@@ -21,7 +21,7 @@ images/
 unsplash-research-dataset-lite-latest/
 
 # Benchmark results
-benchmark_results_*.csv
+#benchmark_results_*.csv
 
 # Secrets and Local configuration
 .env
