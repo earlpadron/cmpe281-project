@@ -4,7 +4,7 @@ import requests
 import random
 from tqdm import tqdm # this is to show a progress bar
 
-def download_unsplash_sample(csv_path, output_dir="images", num_images = 1000):
+def download_unsplash_sample(csv_path, output_dir="../images", num_images = 1000):
     """Download a random sample of images from the Unslpash like dataset CSV file """
     # create output directory
     if not os.path.exists(output_dir):
@@ -59,5 +59,5 @@ def download_unsplash_sample(csv_path, output_dir="images", num_images = 1000):
 
 if __name__ == "__main__":
     # update this path to actualy csv location
-    CSV_LOCATION = "unsplash-research-dataset-lite-latest/photos.csv000"
-    download_unsplash_sample(csv_path=CSV_LOCATION, output_dir="images", num_images=1000)
+    CSV_LOCATION = "../unsplash-research-dataset-lite-latest/photos.csv000"
+    download_unsplash_sample(csv_path=CSV_LOCATION, output_dir="../images", num_images=1000)

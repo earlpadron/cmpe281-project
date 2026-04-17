@@ -21,7 +21,7 @@ Here is how the specific files in this project act as instructions for the AWS "
 
 ### B. `s3-policy.json` (The Keycard)
 *   **Manual Way:** Searching for policies and clicking "Attach."
-*   **CLI Way:** `aws iam put-role-policy --policy-document file://s3-policy.json`
+*   **CLI Way:** `aws iam put-role-policy --policy-document file://infrastructure/s3-policy.json`
 *   **What happens:** This JSON defines exactly which "rooms" (S3 buckets) the identity can enter. The CLI "taps" this keycard against the role we just created.
 
 ### C. `lambda_deployment.zip` (The Cargo)

@@ -94,7 +94,34 @@ Finally, how do we deploy and run `main.py` on the physical Pi without manually 
 
 ---
 
-## 4. Gemini-CLI Assistant Instructions
+## 4. MLOps Lifecycle: Cloud Training vs. Edge Inference (Educational Primer)
+
+### The Difference Between Training and Inference
+In Machine Learning, there are two distinct phases:
+
+1.  **Training (The Heavy Lifting):** This is the process of crunching millions of rows of CSV data to find mathematical patterns. As we discussed, this is what you would do in AWS SageMaker in an enterprise setting because it requires massive compute power and access to huge data lakes (S3/CloudWatch).
+2.  **Inference (The Quick Prediction):** Once the model is trained, it is compiled into a highly optimized, serialized object (the `.pkl` file). This file is essentially just a complex mathematical formula. Making a prediction (inference) using a `.pkl` file takes less than a millisecond and requires almost zero compute power.
+
+### Why the Models Must Live on the Raspberry Pi
+The entire premise of your "Intelligent Edge-Cloud Task Placement Framework" is to avoid unnecessary cloud latency.
+
+*   **The Flawed Cloud-Inference Approach:** Imagine if we deployed the models to AWS SageMaker. Every time a user uploaded an image to the Raspberry Pi, the Pi would have to send an HTTP request across the internet to SageMaker just to ask, *"Should I process this locally or in the cloud?"* Waiting for that answer would add 50ms - 200ms of Network Round Trip Time (RTT). We would be introducing cloud latency just to decide how to avoid cloud latency!
+*   **The Intelligent Edge Approach:** By loading the `.pkl` files directly into the memory of the FastAPI application (`main.py`) running on the Raspberry Pi, the Decision Engine can evaluate the hardware metrics and make a routing decision locally in **~0.5 milliseconds**.
+
+### The Full MLOps Lifecycle for your Architecture
+In a production version of your architecture, the workflow looks like this:
+
+1.  **Data Collection:** The Pi processes images and streams latency logs to CloudWatch/S3.
+2.  **Cloud Training:** Every week, AWS SageMaker spins up, pulls the massive logs from S3, and trains new, smarter Ridge and GBRT models.
+3.  **Model Delivery:** SageMaker exports the new `.pkl` files.
+4.  **Edge Update (OTA):** AWS IoT Greengrass securely pushes (downloads) those new `.pkl` files down to the physical Raspberry Pi over the internet (Over-The-Air update).
+5.  **Edge Inference:** The FastAPI app on the Pi reloads the new `.pkl` files into memory and continues making ultra-fast local routing decisions.
+
+*(Note: For our prototype, we are just manually moving the `.pkl` files we generate locally into the same folder as `main.py`.)*
+
+---
+
+## 5. Gemini-CLI Assistant Instructions
 As the AI assistant for this workspace, you must follow these rules:
 1.  **Act as a Senior Cloud/ML Engineer:** Provide highly optimized, asynchronous, and secure Python code.
 2.  **AWS Best Practices:** Use `boto3` efficiently. Ensure all IAM permissions and security boundaries (TLS 1.2+, SSE-S3) are respected in the code logic.

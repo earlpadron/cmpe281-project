@@ -142,13 +142,16 @@ aws lambda update-function-code \
 ```
 
 ### Method B: Quick Update (Fastest)
-Use this if you **only** modified the text in `lambda_function.py`.
+Use this if you **only** modified the text in `cloud/lambda_function.py`.
 ```bash
 # Update the existing zip with the new script
-zip -g lambda_deployment.zip lambda_function.py
+cd cloud && zip -g ../lambda_deployment.zip lambda_function.py && cd ..
 
 # Push to AWS
 aws lambda update-function-code \
     --function-name cmpe281-image-resizer \
+    --zip-file fileb://lambda_deployment.zip
+```
+e cmpe281-image-resizer \
     --zip-file fileb://lambda_deployment.zip
 ```

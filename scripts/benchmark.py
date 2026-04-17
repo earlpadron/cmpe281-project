@@ -118,16 +118,18 @@ class BenchmarkFramework:
         cold_start_indicator = 0
 
         # Regex parsing for AWS Lambda REPORT format
-        billed_duration_match = re.search(r'Billed Duration: (\d+) ms', log_result)
-        if billed_duration_match:
-            billed_duration_ms = float(billed_duration_match.group(1))
+        # We must explicitly look for the current request_id so we don't accidentally
+        # parse the REPORT line from a previous execution still hanging out in the 4KB tail log buffer.
+        report_pattern = rf"REPORT RequestId: {request_id}.*?Billed Duration: (\d+) ms.*?Memory Size: (\d+) MB"
+        report_match = re.search(report_pattern, log_result, re.DOTALL)
+        if report_match:
+            billed_duration_ms = float(report_match.group(1))
+            memory_size_mb = float(report_match.group(2))
             
-        memory_size_match = re.search(r'Memory Size: (\d+) MB', log_result)
-        if memory_size_match:
-            memory_size_mb = float(memory_size_match.group(1))
-            
-        init_duration_match = re.search(r'Init Duration: ([\d.]+) ms', log_result)
-        if init_duration_match:
+        # Check if "Init Duration" is present IN THIS SPECIFIC REPORT LINE
+        line_pattern = rf"REPORT RequestId: {request_id}.*"
+        line_match = re.search(line_pattern, log_result)
+        if line_match and "Init Duration:" in line_match.group(0):
             cold_start_indicator = 1
             
         # 5. Programmatic Cost Calculation (AWS x86 Lambda Pricing)
@@ -150,7 +152,7 @@ class BenchmarkFramework:
         }
 
     
-    def run_benchmark(self, images_dir="images", limit=1000):
+    def run_benchmark(self, images_dir="../images", limit=1000):
         """Run the benchmarking process by iterating through the local images dataset collected from Unsplash"""
 
         # get list of valid images
@@ -196,7 +198,7 @@ class BenchmarkFramework:
             print(df.describe())
         
             # save to CSV for future ML training
-            output_file = f"benchmark_results_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.csv"
+            output_file = f"../benchmark_results_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.csv"
             df.to_csv(output_file, index=False)
             print(f"\nResults saved to {output_file}")
 
@@ -205,6 +207,6 @@ class BenchmarkFramework:
 if __name__ == "__main__":
     # Note: Replace 'your-bucket-name' and 'your-lambda-function-name' with actual AWS resources
     # Ensure AWS credentials are set up (e.g., via aws configure)
-    bench = BenchmarkFramework(bucket_name='cmpe281-benchmark-data-a81aa9e4', lambda_name='cmpe281-image-resizer')
+    bench = BenchmarkFramework(bucket_name='cmpe281-shared-benchmark-data-ep', lambda_name='cmpe281-shared-image-resizer')
     print(f"Initial Hardware Metrics: {bench.get_hardware_metrics()}")
     bench.run_benchmark(limit=10) # Run a quick test with 10 images

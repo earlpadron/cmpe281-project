@@ -1,0 +1,61 @@
+ You are 100% correct. Right now, main.py assumes your M4 Mac is the Edge device. When you run uvicorn main:app, it opens a port on your local machine
+  (127.0.0.1:8000).
+
+  When we move this to the real Raspberry Pi, the deployment changes significantly. Here is exactly how AWS IoT Greengrass and AWS IoT Core bridge the gap
+  between a Web Application (on a user's phone/laptop) and the physical Raspberry Pi.
+
+  ---
+
+  1. How Deployment Changes (AWS IoT Greengrass)
+  Right now, you are starting the server manually by typing uvicorn main:app. 
+
+  When we deploy to the Raspberry Pi, we don't do that manually. Instead, we package main.py into an AWS IoT Greengrass Component.
+   * What Greengrass does: It acts as an operating system manager on the Pi. It downloads our Python code from AWS, installs the dependencies, starts the
+     FastAPI server automatically when the Pi boots up, restarts it if it crashes, and securely manages the AWS credentials (so we don't have to hardcode
+     keys on the Pi).
+
+  2. How Routing Works: The "Payload Limit" Problem
+  You might be wondering: "Why not just send the image from the Web App directly through AWS IoT Core to the Pi?"
+
+  Because AWS IoT Core uses MQTT (Message Queuing Telemetry Transport). MQTT is designed for tiny sensor data (like temperature readings), not massive
+  high-resolution images. In fact, AWS IoT Core has a strict hard limit of 128 KB per message. Our Unsplash images are often 2MB+.
+
+  3. The Real-World Architecture (The "S3 Pointer" Pattern)
+  Because we cannot push heavy images through IoT Core, and because the Raspberry Pi is hidden behind a home/factory router (meaning the Web App cannot
+  send an HTTP POST directly to it over the public internet), we use a highly scalable cloud pattern:
+
+  Step 1: The User Uploads (Web App -> Cloud)
+  The Web App does not send the image to the Pi. Instead, the Web App uploads the raw image directly to an Amazon S3 Bucket (e.g., into an inbox/ folder).
+
+  Step 2: The Signal (Cloud -> IoT Core -> Raspberry Pi)
+  Once the upload finishes, the Web App sends a tiny JSON message to AWS IoT Core via MQTT:
+   1 {
+   2   "task_id": "12345",
+   3   "s3_raw_image_key": "inbox/image.jpg"
+   4 }
+  Because the Raspberry Pi (via Greengrass) maintains a persistent, outbound MQTT connection to AWS IoT Core, it instantly receives this message through
+  the firewall.
+
+  Step 3: The Edge Decision (Raspberry Pi)
+   1. The Pi receives the MQTT message.
+   2. The Pi uses boto3 to quickly download the image from S3 into its local memory.
+   3. (This is where main.py comes in!) The Pi extracts the features (file size, CPU usage) and runs our ML Decision Engine.
+
+  Step 4: The Execution
+   * If the Pi decides "EDGE": It resizes the image locally, then uploads the finished thumbnail back to S3 (e.g., outbox/image.jpg), and sends an MQTT
+     message back to the Web App saying "Done!"
+   * If the Pi decides "CLOUD": It doesn't upload anything. It simply tells AWS Lambda: "Hey, the image is already in the inbox/ bucket, go resize it!"
+
+  ---
+
+  Why did we build a FastAPI server then?
+  In many real-world enterprise edge scenarios (like a smart factory or a hospital), the "Web App" is an iPad or dashboard connected to the same local
+  Wi-Fi network as the Edge Device. 
+
+  If the Web App and the Pi are on the same local network, the Web App can bypass the cloud entirely and POST the heavy image payload directly to the Pi's
+  local IP address (e.g., http://192.168.1.50:8000/resize). 
+
+  This is exactly what we built in Phase 3. It gives you a fully functional, highly responsive local Edge node. 
+
+  For your final project presentation: You can explain that your FastAPI implementation handles the Local Area Network (LAN) ingestion path, while AWS IoT
+  Greengrass provides the management runtime and secure bridging for the Wide Area Network (WAN) path!

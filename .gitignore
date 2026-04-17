@@ -24,8 +24,14 @@ unsplash-research-dataset-lite-latest/
 #benchmark_results_*.csv
 
 # Secrets and Local configuration
+earl-user-credentials.csv
 .env
 .bucket_name
+
+# Temporary scripts
+test_invoke.py
+
+.pdf
 
 # IDE settings
 .vscode/

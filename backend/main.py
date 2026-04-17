@@ -17,7 +17,11 @@ import threading  # Used for thread-safe counters (tracking how many users are a
 from io import BytesIO  # Used to handle raw image bytes in memory (no writing to disk)
 
 # --- Third-Party Imports ---
+import joblib     # For loading our .pkl Machine Learning models
+import pandas as pd # For formatting inference data
+import time       # For quick network RTT measurements
 from fastapi import FastAPI, UploadFile, File, BackgroundTasks, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 import boto3      # The official AWS SDK for Python. Used to talk to S3 and Lambda.
 import psutil     # Used to sample the Raspberry Pi's CPU and Memory utilization.
@@ -34,12 +38,23 @@ app = FastAPI(
     description="Phase 3: Real-time ML routing between Raspberry Pi and AWS Lambda."
 )
 
+# Enable CORS so the frontend (which may be hosted on S3 or opened locally)
+# can successfully send requests to this API without security blocks.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allows all origins
+    allow_credentials=True,
+    allow_methods=["*"],  # Allows all HTTP methods (GET, POST, etc.)
+    allow_headers=["*"],  # Allows all headers
+    expose_headers=["*"]  # Crucial: allows JS to read our custom 'X-Routing-Decision' header
+)
+
 # ---------------------------------------------------------
 # System Configuration Variables
 # ---------------------------------------------------------
 # These variables define the hardcoded rules and AWS resource names for our framework.
-BUCKET_NAME = "cmpe281-benchmark-data-a81aa9e4" # The globally unique S3 bucket we created
-LAMBDA_NAME = "cmpe281-image-resizer"          # The name of our deployed AWS Lambda function
+BUCKET_NAME = "cmpe281-shared-benchmark-data-ep" # The globally unique S3 bucket we created
+LAMBDA_NAME = "cmpe281-shared-image-resizer"          # The name of our deployed AWS Lambda function
 
 # Concurrency is our main bottleneck on the Edge. If we try to resize 3 images at once 
 # on a Raspberry Pi, it might overheat or crash. This is our safety limit.
@@ -77,21 +92,58 @@ def get_hardware_metrics():
         "edge_memory_utilization": psutil.virtual_memory().percent
     }
 
-def ml_inference_stub(file_size_bytes, hw_metrics):
+# ---------------------------------------------------------
+# Machine Learning Models (Loaded into memory on startup)
+# ---------------------------------------------------------
+try:
+    print("Loading ML Models (.pkl) into memory...")
+    edge_lat_model = joblib.load('models/edge_latency_model.pkl')
+    cloud_lat_model = joblib.load('models/cloud_latency_model.pkl')
+    cloud_cost_model = joblib.load('models/cloud_cost_model.pkl')
+except Exception as e:
+    print(f"WARNING: Could not load ML models. Ensure Phase 2 is complete. Error: {e}")
+    edge_lat_model = cloud_lat_model = cloud_cost_model = None
+
+def ml_inference(file_size_bytes, hw_metrics):
     """
-    STUB: Phase 2 Machine Learning Pipeline Integration.
+    Phase 2 Machine Learning Pipeline Integration.
     
-    Currently, this contains fake math. In Phase 2, you will replace this logic by 
-    loading your trained Ridge Regression and GBRT models (e.g., using scikit-learn).
-    The models will take `file_size_bytes` and `hw_metrics` as input, and predict
-    the exact latency and cost.
+    Uses trained Ridge Regression and GBRT models to mathematically predict 
+    latency and cost based on empirical benchmark data.
     """
-    # Fake mathematical calculation to simulate edge latency scaling with CPU load.
-    base_edge_latency = (file_size_bytes / 10000) * (hw_metrics["edge_cpu_utilization"] / 10 + 1)
+    if not edge_lat_model:
+        # Fallback if models are missing
+        return 1500.0, 400.0, 0.000004
+        
+    # 1. Quick network ping to gauge current RTT to AWS
+    start_rtt = time.perf_counter()
+    try:
+        s3_client.head_bucket(Bucket=BUCKET_NAME)
+    except Exception:
+        pass
+    rtt_ms = (time.perf_counter() - start_rtt) * 1000
     
-    predicted_edge_latency_ms = min(base_edge_latency, 1500.0) 
-    predicted_cloud_latency_ms = 400.0 # Assuming a warm AWS Lambda container
-    predicted_cloud_cost_usd = 0.000004
+    # Estimate uplink bandwidth (we use a static average for inference speed, 
+    # but in a production system this would be a rolling average of past uploads)
+    estimated_uplink_bandwidth_kbps = 10000.0
+    
+    # 2. Format features exactly as the models were trained (using Pandas)
+    X_edge = pd.DataFrame([{
+        'image_size_bytes': file_size_bytes,
+        'edge_cpu_utilization': hw_metrics['edge_cpu_utilization'],
+        'edge_memory_utilization': hw_metrics['edge_memory_utilization']
+    }])
+
+    X_cloud = pd.DataFrame([{
+        'image_size_bytes': file_size_bytes,
+        'network_rtt_ms': rtt_ms,
+        'estimated_uplink_bandwidth_kbps': estimated_uplink_bandwidth_kbps
+    }])
+    
+    # 3. Inference (Less than 1 millisecond execution time!)
+    predicted_edge_latency_ms = float(edge_lat_model.predict(X_edge)[0])
+    predicted_cloud_latency_ms = float(cloud_lat_model.predict(X_cloud)[0])
+    predicted_cloud_cost_usd = float(cloud_cost_model.predict(X_cloud)[0])
     
     return predicted_edge_latency_ms, predicted_cloud_latency_ms, predicted_cloud_cost_usd
 
@@ -220,7 +272,7 @@ async def resize_image(background_tasks: BackgroundTasks, file: UploadFile = Fil
             # Rule 2: Machine Learning Inference
             # The Pi is safe, so we ask our ML models to predict the future.
             hw_metrics = get_hardware_metrics()
-            pred_edge_lat, pred_cloud_lat, pred_cloud_cost = ml_inference_stub(file_size, hw_metrics)
+            pred_edge_lat, pred_cloud_lat, pred_cloud_cost = ml_inference(file_size, hw_metrics)
             
             # Rule 3: Optimization Placement Strategy
             # We only send to the cloud if it's FASTER *and* CHEAPER than the user's budget.

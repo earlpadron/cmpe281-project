@@ -61,6 +61,7 @@ Because the Pi's CPU is significantly slower than an M4 Mac, we recommend runnin
 
 1. **Start the Benchmark:**
    ```bash
+   cd scripts
    python3 benchmark.py
    ```
 

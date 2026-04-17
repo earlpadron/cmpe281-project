@@ -216,7 +216,7 @@
 <script>
   // ── Config ──────────────────────────────────────────────────────────────────
   // Change this if your FastAPI is running on a different port or host
-  const API_BASE = "http://54.82.205.79:8000";
+  const API_BASE = "http://127.0.0.1:8000";
 
   // ── State ───────────────────────────────────────────────────────────────────
   const files = [];
@@ -331,14 +331,33 @@
       form.append("format", format);
 
       try {
-        const res  = await fetch(`${API_BASE}/resize`, { method: "POST", body: form });
-        const data = await res.json();
+        const res = await fetch(`${API_BASE}/resize`, { method: "POST", body: form });
+        
         if (!res.ok) {
-          results.push({ filename: file.name, error: data.detail || "Failed" });
+          let errorDetail = "Failed";
+          try {
+             const errData = await res.json();
+             errorDetail = errData.detail || errorDetail;
+          } catch(e) {}
+          results.push({ filename: file.name, error: errorDetail });
+          continue;
+        }
+
+        const routingDecision = res.headers.get("X-Routing-Decision");
+        
+        if (routingDecision === "EDGE") {
+          // Edge returned raw image bytes
+          const blob = await res.blob();
+          const downloadUrl = URL.createObjectURL(blob);
+          results.push({ filename: file.name, download_url: downloadUrl, route: "EDGE" });
         } else {
-          results.push({ filename: file.name, download_url: data.download_url, route: data.route });
+          // Cloud returned a JSON pointer to S3
+          const data = await res.json();
+          const downloadUrl = data.result ? data.result.s3_url : null;
+          results.push({ filename: file.name, download_url: downloadUrl, route: "CLOUD" });
         }
       } catch (err) {
+        console.error(err);
         results.push({ filename: file.name, error: "Network error — is the server running?" });
       }
 
