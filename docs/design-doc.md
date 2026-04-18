@@ -83,7 +83,7 @@ To bypass this limitation and cross the firewall, we implement a highly scalable
     *   The Pi extracts the features (file size, CPU usage) and runs our ML Decision Engine.
 4.  **The Execution:**
     *   **If the Pi decides "EDGE":** It resizes the image locally, uploads the finished thumbnail back to S3 (e.g., `outbox/image.jpg`), and publishes an MQTT message back to the Web App confirming completion.
-    *   **If the Pi decides "CLOUD":** It saves bandwidth by *not* uploading anything. It simply invokes AWS Lambda and says: *"Hey, the image is already in the `inbox/` bucket, go resize it!"*
+    *   **If the Pi decides "CLOUD":** It saves bandwidth by *not* uploading anything. It invokes AWS Lambda, tells it to pull the image from the `inbox/` bucket, and then returns a **secure 5-minute Presigned URL** to the Web App so the unauthenticated browser can securely download the processed thumbnail from the private S3 Data Lake.
 
 ### The Role of AWS IoT Greengrass
 Finally, how do we deploy and run `main.py` on the physical Pi without manually SSHing in and typing `uvicorn main:app`?

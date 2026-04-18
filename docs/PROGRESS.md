@@ -22,6 +22,7 @@
 *   Implemented real-time feature extraction (`psutil` CPU/Mem, `boto3` RTT network pings).
 *   Integrated the serialized `.pkl` models to calculate sub-millisecond execution predictions.
 *   **Proactive Warming Innovation:** Implemented a non-blocking `FastAPI.BackgroundTasks` ping to AWS Lambda (`InvocationType='Event'`) when Edge execution is selected. This forces AWS to provision the container, eliminating Cold Starts for subsequent overflow traffic.
+*   **Secure Public Downloads:** Integrated S3 Presigned URLs with a 5-minute expiration into the Cloud response path. This allows unauthenticated users on the frontend to securely download thumbnails from a strictly blocked, private S3 Data Lake.
 *   Integrated dual-path response generation: S3 URL JSON pointers for cloud execution vs. raw byte streaming for edge execution.
 
 ### Technical Rationale

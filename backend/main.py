@@ -53,7 +53,7 @@ app.add_middleware(
 # System Configuration Variables
 # ---------------------------------------------------------
 # These variables define the hardcoded rules and AWS resource names for our framework.
-BUCKET_NAME = "cmpe281-shared-benchmark-data-ep" # The globally unique S3 bucket we created
+BUCKET_NAME = "cmpe281-shared-benchmark-data-ep-v2" # The globally unique S3 bucket we created
 LAMBDA_NAME = "cmpe281-shared-image-resizer"          # The name of our deployed AWS Lambda function
 
 # Concurrency is our main bottleneck on the Edge. If we try to resize 3 images at once 
@@ -214,9 +214,14 @@ def process_image_cloud(image_bytes: bytes, filename: str) -> dict:
     # 3. Parse the JSON response sent back by our `lambda_function.py` script.
     response_payload = json.loads(response['Payload'].read().decode("utf-8"))
     
-    # 4. Construct the public URL where the final, resized image now lives in S3.
+    # 4. Construct a secure Presigned URL so the user's browser can download the private file.
+    # This URL automatically expires after 5 minutes (300 seconds), maintaining our strict security.
     processed_key = f"resized/{filename}"
-    s3_url = f"https://{BUCKET_NAME}.s3.amazonaws.com/{processed_key}"
+    s3_url = s3_client.generate_presigned_url(
+        'get_object',
+        Params={'Bucket': BUCKET_NAME, 'Key': processed_key},
+        ExpiresIn=300
+    )
     
     return {
         "status": "success",

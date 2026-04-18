@@ -67,7 +67,7 @@ uvicorn main:app --reload
 1. Drag and drop a large image into the browser UI.
 2. Click "Resize images".
 3. Watch the Backend Terminal: You will see the system dynamically decide to route to EDGE or CLOUD based on the ML latency/cost predictions.
-4. Watch the UI: The resized image will either download directly (Edge) or provide an S3 link (Cloud).
+4. Watch the UI: The resized image will either download directly (Edge) or provide a secure, 5-minute S3 Presigned URL link (Cloud) to download the processed thumbnail from the private Data Lake.
 
 ---
 
@@ -78,7 +78,7 @@ If you want to gather new latency data from the Raspberry Pi or retrain the Mach
 ### 1. Download the Raw Dataset
 We use the Unsplash Lite Dataset to test real-world image entropy.
 1. Download the Unsplash Lite Dataset (photos.csv000) and place it in the root folder.
-2. Run the downloader to fetch 1,000 images into the `images/` directory:
+2. Run the downloader to fetch 1,000(OR MORE, this param can be changed) images into the `images/` directory:
 ```bash
 cd scripts
 python3 download_dataset.py

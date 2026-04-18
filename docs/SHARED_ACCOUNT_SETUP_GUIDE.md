@@ -10,7 +10,7 @@ Since we are following the Principle of Least Privilege, please execute these st
 This bucket acts as the primary data lake for our architecture. It stores the raw images uploaded by the frontend and the processed thumbnails returned by Lambda.
 
 1.  Navigate to **S3** -> **Create bucket**.
-2.  **Bucket Name:** `cmpe281-shared-benchmark-data-ep` *(Note: Earl has already configured the Python backend to point to this specific name).*
+2.  **Bucket Name:** `cmpe281-shared-benchmark-data-ep-v2` *(Note: Earl has already configured the Python backend to point to this specific name).*
 3.  **AWS Region:** US East (N. Virginia) `us-east-1`.
 4.  **Object Ownership:** ACLs disabled (recommended).
 5.  **Block Public Access:** **Keep this CHECKED (Block all public access).** Security is paramount; all access will be handled via IAM roles.
@@ -49,8 +49,8 @@ AWS Lambda needs explicit permission to execute code, write logs to CloudWatch, 
             "s3:PutObject"
           ],
           "Resource": [
-            "arn:aws:s3:::cmpe281-shared-benchmark-data-ep",
-            "arn:aws:s3:::cmpe281-shared-benchmark-data-ep/*"
+            "arn:aws:s3:::cmpe281-shared-benchmark-data-ep-v2",
+            "arn:aws:s3:::cmpe281-shared-benchmark-data-ep-v2/*"
           ]
         }
       ]

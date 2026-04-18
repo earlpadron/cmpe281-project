@@ -207,6 +207,6 @@ class BenchmarkFramework:
 if __name__ == "__main__":
     # Note: Replace 'your-bucket-name' and 'your-lambda-function-name' with actual AWS resources
     # Ensure AWS credentials are set up (e.g., via aws configure)
-    bench = BenchmarkFramework(bucket_name='cmpe281-shared-benchmark-data-ep', lambda_name='cmpe281-shared-image-resizer')
+    bench = BenchmarkFramework(bucket_name='cmpe281-shared-benchmark-data-ep-v2', lambda_name='cmpe281-shared-image-resizer')
     print(f"Initial Hardware Metrics: {bench.get_hardware_metrics()}")
     bench.run_benchmark(limit=10) # Run a quick test with 10 images
