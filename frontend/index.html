@@ -53,9 +53,6 @@
   .setting-group { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 120px; }
   .setting-label { font-size: 0.68rem; color: var(--muted); letter-spacing: 0.06em; text-transform: uppercase; }
   .setting-row { display: flex; align-items: center; gap: 6px; }
-  .dim-input { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-family: var(--font-mono); font-size: 0.82rem; padding: 5px 8px; width: 68px; outline: none; transition: border-color 0.15s; }
-  .dim-input:focus { border-color: var(--accent); }
-  .dim-sep { color: var(--muted); }
   .format-select { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-family: var(--font-mono); font-size: 0.82rem; padding: 5px 8px; outline: none; cursor: pointer; }
   .format-select:focus { border-color: var(--accent); }
 
@@ -90,8 +87,6 @@
   .done-title em { font-style: italic; color: var(--accent); }
   .done-meta { font-size: 0.78rem; color: var(--muted); }
   .done-actions { display: flex; gap: 0.75rem; flex-wrap: wrap; justify-content: center; margin-top: 0.5rem; }
-  .btn-download { background: var(--accent); color: #0d1a16; border: none; font-family: var(--font-mono); font-size: 0.82rem; padding: 0.65rem 1.5rem; border-radius: 8px; cursor: pointer; font-weight: 500; transition: filter 0.15s; display: flex; align-items: center; gap: 6px; text-decoration: none; }
-  .btn-download:hover { filter: brightness(1.1); }
 
   /* Results list in done screen */
   #results-list { width: 100%; display: flex; flex-direction: column; gap: 8px; max-width: 480px; }
@@ -143,10 +138,7 @@
       <div class="setting-group">
         <span class="setting-label">Output size</span>
         <div class="setting-row">
-          <input class="dim-input" id="inp-w" type="number" value="800" min="1" max="8000" />
-          <span class="dim-sep">×</span>
-          <input class="dim-input" id="inp-h" type="number" value="800" min="1" max="8000" />
-          <span class="dim-sep" style="font-size:0.7rem;color:var(--muted)">px</span>
+          <span style="font-size:0.82rem;color:var(--text)">800 × 800 px</span>
         </div>
       </div>
       <div class="setting-group">
@@ -156,14 +148,6 @@
           <option value="jpeg">JPEG</option>
           <option value="png">PNG</option>
           <option value="webp">WEBP</option>
-        </select>
-      </div>
-      <div class="setting-group">
-        <span class="setting-label">Route</span>
-        <select class="format-select" id="inp-route">
-          <option value="auto">Auto (ML)</option>
-          <option value="cloud">Cloud (Lambda)</option>
-          <option value="edge">Edge (Pi)</option>
         </select>
       </div>
     </div>
@@ -215,7 +199,6 @@
 
 <script>
   // ── Config ──────────────────────────────────────────────────────────────────
-  // Change this if your FastAPI is running on a different port or host
   const API_BASE = "http://127.0.0.1:8000";
 
   // ── State ───────────────────────────────────────────────────────────────────
@@ -311,8 +294,8 @@
   btnResize.addEventListener("click", async () => {
     if (!files.length) return;
 
-    const width  = parseInt(document.getElementById("inp-w").value) || 800;
-    const height = parseInt(document.getElementById("inp-h").value) || 800;
+    const width  = 800;
+    const height = 800;
     const format = document.getElementById("inp-fmt").value;
 
     showScreen("screen-progress");
@@ -332,29 +315,33 @@
 
       try {
         const res = await fetch(`${API_BASE}/resize`, { method: "POST", body: form });
-        
+
         if (!res.ok) {
           let errorDetail = "Failed";
           try {
-             const errData = await res.json();
-             errorDetail = errData.detail || errorDetail;
+            const errData = await res.json();
+            errorDetail = errData.detail || errorDetail;
           } catch(e) {}
           results.push({ filename: file.name, error: errorDetail });
           continue;
         }
 
         const routingDecision = res.headers.get("X-Routing-Decision");
-        
-        if (routingDecision === "EDGE") {
-          // Edge returned raw image bytes
-          const blob = await res.blob();
-          const downloadUrl = URL.createObjectURL(blob);
-          results.push({ filename: file.name, download_url: downloadUrl, route: "EDGE" });
-        } else {
-          // Cloud returned a JSON pointer to S3
+
+        if (routingDecision === "CLOUD") {
+          // Cloud returned JSON with a presigned S3 URL
           const data = await res.json();
           const downloadUrl = data.result ? data.result.s3_url : null;
-          results.push({ filename: file.name, download_url: downloadUrl, route: "CLOUD" });
+          if (downloadUrl) {
+            results.push({ filename: file.name, download_url: downloadUrl });
+          } else {
+            results.push({ filename: file.name, error: "Cloud resize failed — no URL returned" });
+          }
+        } else {
+          // EDGE (or no header) returned raw image bytes
+          const blob = await res.blob();
+          const downloadUrl = URL.createObjectURL(blob);
+          results.push({ filename: file.name, download_url: downloadUrl });
         }
       } catch (err) {
         console.error(err);
@@ -372,7 +359,6 @@
     showScreen("screen-done");
 
     const succeeded = results.filter(r => r.download_url);
-    const failed    = results.filter(r => r.error);
 
     document.getElementById("done-meta").textContent =
       `${succeeded.length} of ${results.length} image${results.length !== 1 ? "s" : ""} resized to ${width}×${height}px`;
