@@ -4,3 +4,7 @@ python-multipart
 boto3
 python-dotenv
 Pillow
+joblib
+pandas
+psutil
+scikit-learn

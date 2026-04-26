@@ -27,6 +27,64 @@ import boto3      # The official AWS SDK for Python. Used to talk to S3 and Lamb
 import psutil     # Used to sample the Raspberry Pi's CPU and Memory utilization.
 from PIL import Image  # Python Imaging Library (Pillow). Used for local image resizing.
 
+import logging
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+)
+logger = logging.getLogger("edge_cloud_router")
+
+
+def log_resize_request(
+    *,
+    request_id: str,
+    filename: str | None,
+    file_size_bytes: int,
+    current_concurrency: int,
+    hw_metrics: dict,
+    predicted_edge_latency_ms: float | None,
+    predicted_cloud_latency_ms: float | None,
+    predicted_cloud_cost_usd: float | None,
+    routing_decision: str | None,
+    routing_mode: str,
+    reason: str | None,
+    request_start_perf: float,
+    execution_time_ms: float | None,
+    status: str,
+    error_message: str | None,
+    edge_score: float | None,
+    cloud_score: float | None,
+    queue_pressure: float | None,
+    cost_ratio: float | None,
+) -> None:
+    """One structured log line per /resize request for offline analysis."""
+    actual_total_time_ms = (time.perf_counter() - request_start_perf) * 1000.0
+
+    log_data = {
+        "request_id": request_id,
+        "filename": filename or "",
+        "file_size_bytes": file_size_bytes,
+        "current_concurrency": current_concurrency,
+        "edge_cpu_utilization": hw_metrics.get("edge_cpu_utilization"),
+        "edge_memory_utilization": hw_metrics.get("edge_memory_utilization"),
+        "predicted_edge_latency_ms": predicted_edge_latency_ms,
+        "predicted_cloud_latency_ms": predicted_cloud_latency_ms,
+        "predicted_cloud_cost_usd": predicted_cloud_cost_usd,
+        "routing_decision": routing_decision,
+        "routing_mode": routing_mode,
+        "reason": reason,
+        "execution_time_ms": round(execution_time_ms, 3) if execution_time_ms is not None else None,
+        "actual_total_time_ms": round(actual_total_time_ms, 3),
+        "status": status,
+        "error_message": error_message,
+        "edge_score": round(edge_score, 3) if edge_score is not None else None,
+        "cloud_score": round(cloud_score, 3) if cloud_score is not None else None,
+        "queue_pressure": round(queue_pressure, 3) if queue_pressure is not None else None,
+        "cost_ratio": round(cost_ratio, 6) if cost_ratio is not None else None,
+    }
+
+    logger.info(json.dumps(log_data, default=str))
 # ---------------------------------------------------------
 # FastAPI App Initialization
 # ---------------------------------------------------------
@@ -63,6 +121,19 @@ MAX_CONCURRENCY_THRESHOLD = 2
 # The maximum amount of money (in USD) a user is willing to spend to process an image in the cloud.
 USER_BUDGET_USD = 0.000050                     
 
+# Temporary testing flag: force all requests to cloud path.
+# Set back to False when you want normal auto-routing behavior.
+#FORCE_CLOUD_ROUTING = True
+FORCE_ROUTE = None   # Options: None, "EDGE", "CLOUD"
+# Lyapunov-inspired routing controls
+USE_LYAPUNOV_ROUTING = True
+
+# V controls how strongly we penalize cloud cost.
+# Higher V = more conservative about using cloud.
+LYAPUNOV_V = 10000.0
+
+# Extra penalty multiplier for choosing EDGE when the system is already busy.
+EDGE_QUEUE_WEIGHT = 1.0
 # ---------------------------------------------------------
 # Global State & AWS Clients
 # ---------------------------------------------------------
@@ -75,7 +146,7 @@ task_lock = threading.Lock()
 # Initialize our AWS clients globally so we don't have to reconnect for every request.
 # Boto3 uses the credentials we configured via `aws configure` in the terminal.
 s3_client = boto3.client('s3')
-lambda_client = boto3.client('lambda')
+lambda_client = boto3.client("lambda", region_name="us-east-1")
 
 # ---------------------------------------------------------
 # Core System Functions
@@ -96,12 +167,12 @@ def get_hardware_metrics():
 # Machine Learning Models (Loaded into memory on startup)
 # ---------------------------------------------------------
 try:
-    print("Loading ML Models (.pkl) into memory...")
+    logger.info("Loading ML models (.pkl) into memory...")
     edge_lat_model = joblib.load('models/edge_latency_model.pkl')
     cloud_lat_model = joblib.load('models/cloud_latency_model.pkl')
     cloud_cost_model = joblib.load('models/cloud_cost_model.pkl')
 except Exception as e:
-    print(f"WARNING: Could not load ML models. Ensure Phase 2 is complete. Error: {e}")
+    logger.warning("Could not load ML models; inference will use fallback values. Error: %s", e)
     edge_lat_model = cloud_lat_model = cloud_cost_model = None
 
 def ml_inference(file_size_bytes, hw_metrics):
@@ -157,7 +228,7 @@ def proactive_warming_ping():
     container so it's "warm" and ready for the next user, eliminating the Cold Start penalty.
     """
     try:
-        print("[Warming Ping] Firing asynchronous ping to AWS Lambda...")
+        logger.debug("[Warming Ping] Firing asynchronous ping to AWS Lambda...")
         lambda_client.invoke(
             FunctionName=LAMBDA_NAME,
             # 'Event' is critical here. It tells AWS "Fire and forget." Our Edge server
@@ -167,7 +238,7 @@ def proactive_warming_ping():
             Payload=json.dumps({"warm_ping": True}) 
         )
     except Exception as e:
-        print(f"[Warming Ping Error] {e}")
+        logger.warning("[Warming Ping Error] %s", e)
 
 
 # ---------------------------------------------------------
@@ -177,7 +248,7 @@ def process_image_edge(image_bytes: bytes, img_format: str) -> bytes:
     """
     Path A: Executes the heavy image resizing locally on the Raspberry Pi's CPU.
     """
-    print("[Execution] Processing on Edge Node...")
+    logger.debug("[Execution] Processing on Edge Node...")
     # Load the raw bytes into a Pillow Image object in memory
     img = Image.open(BytesIO(image_bytes))
     
@@ -198,7 +269,7 @@ def process_image_cloud(image_bytes: bytes, filename: str) -> dict:
     """
     Path B: Offloads the payload to AWS for Serverless processing.
     """
-    print("[Execution] Processing on Cloud Node...")
+    logger.debug("[Execution] Processing on Cloud Node...")
     
     # 1. Upload the raw image bytes from the user directly to Amazon S3
     s3_client.put_object(Bucket=BUCKET_NAME, Key=filename, Body=image_bytes)
@@ -228,7 +299,92 @@ def process_image_cloud(image_bytes: bytes, filename: str) -> dict:
         "s3_url": s3_url,
         "lambda_response": response_payload
     }
+def lyapunov_route_decision(
+    *,
+    current_concurrency: int,
+    max_concurrency_threshold: int,
+    predicted_edge_latency_ms: float,
+    predicted_cloud_latency_ms: float,
+    predicted_cloud_cost_usd: float,
+    user_budget_usd: float,
+) -> tuple[str, str, dict]:
+    """
+    Lyapunov-inspired drift-plus-penalty routing.
 
+    We approximate queue pressure using current concurrency. EDGE incurs more penalty
+    as the system gets busier. CLOUD incurs latency plus a weighted cost penalty.
+
+    Returns:
+        routing_decision: "EDGE" or "CLOUD"
+        reason: human-readable explanation
+        policy_debug: dict of intermediate scores for logging/debugging
+    """
+
+    # Safety guard: if edge is already overloaded, force cloud.
+    if current_concurrency > max_concurrency_threshold:
+        return (
+            "CLOUD",
+            f"Lyapunov override: concurrency limit exceeded ({current_concurrency}/{max_concurrency_threshold})",
+            {
+                "edge_score": None,
+                "cloud_score": None,
+                "queue_pressure": None,
+                "cost_ratio": None,
+            },
+        )
+
+    # Normalize congestion to [0, 1] at the threshold, >1 past it.
+    queue_pressure = current_concurrency / max_concurrency_threshold if max_concurrency_threshold > 0 else 1.0
+
+    # Normalize cost against the user budget.
+    # If cost_ratio > 1, cloud is over budget.
+    cost_ratio = (
+        predicted_cloud_cost_usd / user_budget_usd
+        if user_budget_usd > 0
+        else float("inf")
+    )
+
+    # EDGE gets more expensive as the edge becomes busier.
+    edge_score = predicted_edge_latency_ms * (1.0 + EDGE_QUEUE_WEIGHT * queue_pressure)
+
+    # CLOUD gets latency plus weighted cost penalty.
+    cloud_score = predicted_cloud_latency_ms + LYAPUNOV_V * cost_ratio
+
+    # Optional hard budget rule: if cloud cost exceeds budget, reject cloud.
+    if predicted_cloud_cost_usd > user_budget_usd:
+        return (
+            "EDGE",
+            "Lyapunov policy chose EDGE because predicted cloud cost exceeds budget",
+            {
+                "edge_score": edge_score,
+                "cloud_score": cloud_score,
+                "queue_pressure": queue_pressure,
+                "cost_ratio": cost_ratio,
+            },
+        )
+
+    if cloud_score < edge_score:
+        return (
+            "CLOUD",
+            "Lyapunov policy chose CLOUD (lower drift-plus-penalty score)",
+            {
+                "edge_score": edge_score,
+                "cloud_score": cloud_score,
+                "queue_pressure": queue_pressure,
+                "cost_ratio": cost_ratio,
+            },
+        )
+
+    return (
+        "EDGE",
+        "Lyapunov policy chose EDGE (lower drift-plus-penalty score)",
+        {
+            "edge_score": edge_score,
+            "cloud_score": cloud_score,
+            "queue_pressure": queue_pressure,
+            "cost_ratio": cost_ratio,
+        },
+    )
 # ---------------------------------------------------------
 # API Endpoints (The URLs the frontend talks to)
 # ---------------------------------------------------------
@@ -245,101 +401,165 @@ async def resize_image(background_tasks: BackgroundTasks, file: UploadFile = Fil
     It orchestrates the entire intelligence and routing workflow.
     """
     global active_tasks
-    
-    # Safely lock the thread to increment our concurrency counter.
-    # We must know exactly how many images are currently being processed.
+
+    request_id = str(uuid.uuid4())
+    request_start_perf = time.perf_counter()
+
+    filename = file.filename
+    file_size_bytes = 0
+    current_concurrency = 0
+    hw_metrics: dict = {}
+    pred_edge_lat: float | None = None
+    pred_cloud_lat: float | None = None
+    pred_cloud_cost: float | None = None
+    routing_decision: str | None = None
+    routing_mode = "normal"
+    reason: str | None = None
+    execution_time_ms: float | None = None
+    error_message: str | None = None
+    status = "error"
+
     with task_lock:
         active_tasks += 1
         current_concurrency = active_tasks
 
-    # Use a try/finally block to guarantee we decrement the counter when we finish, 
-    # even if an error crashes the code in the middle.
     try:
-        # Read the uploaded image from the user's HTTP request into the Pi's RAM
         image_bytes = await file.read()
-        file_size = len(image_bytes)
-        
-        if file_size == 0:
+        file_size_bytes = len(image_bytes)
+
+        if file_size_bytes == 0:
+            status = "empty_file"
             raise HTTPException(status_code=400, detail="Empty file uploaded.")
-            
+
         # ========================================================
         # STEP 1: ROUTING POLICY EVALUATION
         # ========================================================
-        
-        # Rule 1: The Hard Threshold. 
-        # If the Pi is already processing too many images, it will overheat. 
-        # We bypass ML and immediately route to the Cloud for safety.
-        if current_concurrency > MAX_CONCURRENCY_THRESHOLD:
-            routing_decision = "CLOUD"
-            reason = f"Concurrency Limit Exceeded (Active: {current_concurrency}/{MAX_CONCURRENCY_THRESHOLD})"
-        
-        else:
-            # Rule 2: Machine Learning Inference
-            # The Pi is safe, so we ask our ML models to predict the future.
-            hw_metrics = get_hardware_metrics()
-            pred_edge_lat, pred_cloud_lat, pred_cloud_cost = ml_inference(file_size, hw_metrics)
-            
-            # Rule 3: Optimization Placement Strategy
-            # We only send to the cloud if it's FASTER *and* CHEAPER than the user's budget.
-            if (pred_cloud_lat < pred_edge_lat) and (pred_cloud_cost <= USER_BUDGET_USD):
-                routing_decision = "CLOUD"
-                reason = "Cloud optimized (Lower predicted latency & within budget)"
-            else:
-                routing_decision = "EDGE"
-                reason = "Edge optimized (Lower predicted latency or cloud budget exceeded)"
 
-        # Log the decision to the terminal for debugging
-        print(f"[{file.filename}] Route: {routing_decision} | Reason: {reason}")
-        
+        if FORCE_ROUTE == "CLOUD":
+            routing_decision = "CLOUD"
+            routing_mode = "forced_cloud"
+            reason = "Forced cloud routing (temporary test override)"
+
+        elif FORCE_ROUTE == "EDGE":
+            routing_decision = "EDGE"
+            routing_mode = "forced_edge"
+            reason = "Forced edge routing (temporary test override)"
+
+        else:
+            # Only gather metrics / run ML during normal routing mode
+            hw_metrics = get_hardware_metrics()
+            pred_edge_lat, pred_cloud_lat, pred_cloud_cost = ml_inference(file_size_bytes, hw_metrics)
+
+            if USE_LYAPUNOV_ROUTING:
+                routing_decision, reason, policy_debug = lyapunov_route_decision(
+                    current_concurrency=current_concurrency,
+                    max_concurrency_threshold=MAX_CONCURRENCY_THRESHOLD,
+                    predicted_edge_latency_ms=pred_edge_lat,
+                    predicted_cloud_latency_ms=pred_cloud_lat,
+                    predicted_cloud_cost_usd=pred_cloud_cost,
+                    user_budget_usd=USER_BUDGET_USD,
+                )
+
+                edge_score = policy_debug["edge_score"]
+                cloud_score = policy_debug["cloud_score"]
+                queue_pressure = policy_debug["queue_pressure"]
+                cost_ratio = policy_debug["cost_ratio"]
+                routing_mode = "lyapunov"
+
+            else:
+                if current_concurrency > MAX_CONCURRENCY_THRESHOLD:
+                    routing_decision = "CLOUD"
+                    reason = f"Concurrency Limit Exceeded (Active: {current_concurrency}/{MAX_CONCURRENCY_THRESHOLD})"
+                elif (pred_cloud_lat < pred_edge_lat) and (pred_cloud_cost <= USER_BUDGET_USD):
+                    routing_decision = "CLOUD"
+                    reason = "Cloud optimized (Lower predicted latency & within budget)"
+                else:
+                    routing_decision = "EDGE"
+                    reason = "Edge optimized (Lower predicted latency or cloud budget exceeded)"
         # ========================================================
         # STEP 2: EXECUTION PHASE
         # ========================================================
-        # Generate a random unique ID so multiple users uploading "image.jpg" don't overwrite each other.
-        request_id = str(uuid.uuid4())
-        unique_filename = f"{request_id}_{file.filename}"
-        
+        safe_name = filename or "upload"
+        unique_filename = f"{request_id}_{safe_name}"
+
         if routing_decision == "EDGE":
-            
-            # INNOVATION: As we start processing locally, we tell FastAPI to run our 
-            # "Warming Ping" function in the background. The user doesn't wait for this.
             background_tasks.add_task(proactive_warming_ping)
-            
+
             try:
                 img_format = file.content_type.split("/")[-1] if file.content_type else "JPEG"
-                
-                # asyncio.to_thread() is CRITICAL here. Image resizing blocks the CPU.
-                # By pushing it to a separate thread, the main FastAPI server can still 
-                # accept new HTTP requests from other users while the resize happens.
+
+                execution_start = time.perf_counter()
                 processed_bytes = await asyncio.to_thread(process_image_edge, image_bytes, img_format)
-                
-                # Return the physical resized image file directly to the user's browser.
+                execution_time_ms = (time.perf_counter() - execution_start) * 1000.0
+
+                status = "success"
                 return Response(
-                    content=processed_bytes, 
+                    content=processed_bytes,
                     media_type=file.content_type,
-                    headers={"X-Routing-Decision": "EDGE"}
+                    headers={"X-Routing-Decision": "EDGE"},
                 )
+
             except Exception as e:
-                raise HTTPException(status_code=500, detail=f"Edge Processing Failed: {str(e)}")
-                
+                execution_time_ms = (time.perf_counter() - execution_start) * 1000.0 if 'execution_start' in locals() else None
+                status = "edge_processing_failed"
+                error_message = str(e)
+                raise HTTPException(status_code=500, detail=f"Edge Processing Failed: {str(e)}") from e
+
         elif routing_decision == "CLOUD":
-            
             try:
-                # AWS boto3 network calls also block the CPU, so we thread them too.
+                execution_start = time.perf_counter()
                 cloud_result = await asyncio.to_thread(process_image_cloud, image_bytes, unique_filename)
-                
-                # Instead of returning the raw image bytes (which would use up Pi bandwidth),
-                # we just return a lightweight JSON message with the S3 URL. The frontend
-                # will use that URL to download the image directly from Amazon.
-                return JSONResponse(status_code=200, content={
-                    "route": "CLOUD",
-                    "reason": reason,
-                    "result": cloud_result
-                })
+                execution_time_ms = (time.perf_counter() - execution_start) * 1000.0
+
+                status = "success"
+                return JSONResponse(
+                    status_code=200,
+                    content={
+                        "route": "CLOUD",
+                        "reason": reason,
+                        "result": cloud_result,
+                    },
+                    headers={"X-Routing-Decision": "CLOUD"}
+                )
+
             except Exception as e:
-                raise HTTPException(status_code=500, detail=f"Cloud Processing Failed: {str(e)}")
+                execution_time_ms = (time.perf_counter() - execution_start) * 1000.0 if 'execution_start' in locals() else None
+                status = "cloud_processing_failed"
+                error_message = str(e)
+                raise HTTPException(status_code=500, detail=f"Cloud Processing Failed: {str(e)}") from e
+
+        status = "unknown_routing_decision"
+        error_message = "No routing decision matched."
+        raise HTTPException(status_code=500, detail="No routing decision matched.")
+
+    except HTTPException as e:
+        if status == "error":
+            status = f"http_{e.status_code}"
+            error_message = e.detail if isinstance(e.detail, str) else str(e.detail)
+        raise
 
     finally:
-        # STEP 3: CLEANUP
-        # Decrease the concurrency counter so the next user knows the Pi is free.
+        log_resize_request(
+            request_id=request_id,
+            filename=filename,
+            file_size_bytes=file_size_bytes,
+            current_concurrency=current_concurrency,
+            hw_metrics=hw_metrics,
+            predicted_edge_latency_ms=pred_edge_lat,
+            predicted_cloud_latency_ms=pred_cloud_lat,
+            predicted_cloud_cost_usd=pred_cloud_cost,
+            routing_decision=routing_decision,
+            routing_mode=routing_mode,
+            reason=reason,
+            request_start_perf=request_start_perf,
+            execution_time_ms=execution_time_ms,
+            status=status,
+            error_message=error_message,
+            edge_score=edge_score,
+            cloud_score=cloud_score,
+            queue_pressure=queue_pressure,
+            cost_ratio=cost_ratio,
+        )
+
         with task_lock:
             active_tasks -= 1

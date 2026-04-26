@@ -1,0 +1,50 @@
+INFO:     Will watch for changes in these directories: ['C:\\Users\\mattt\\Projects2\\cmpe281-project\\cmpe281-project\\backend']
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+INFO:     Started reloader process [44752] using WatchFiles
+2026-04-25 08:11:54,381 | INFO | botocore.credentials | Found credentials in shared credentials file: ~/.aws/credentials
+2026-04-25 08:11:54,593 | INFO | edge_cloud_router | Loading ML models (.pkl) into memory...
+INFO:     Started server process [25884]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     127.0.0.1:50953 - "GET /docs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50953 - "GET /openapi.json HTTP/1.1" 200 OK
+2026-04-25 08:12:48,002 | INFO | edge_cloud_router | {"request_id": "4d5ff51f-b9a0-47b6-b058-8b8bbff88093", "filename": "jpg-large_12492-2.jpg", "file_size_bytes": 442260, "current_concurrency": 1, "edge_cpu_utilization": 7.4, "edge_memory_utilization": 73.8, "predicted_edge_latency_ms": 206.87738081596933, "predicted_cloud_latency_ms": 592.5007890995709, "predicted_cloud_cost_usd": 5.998286656582256e-06, "routing_decision": "EDGE", "routing_mode": "normal", "reason": "Edge optimized (Lower predicted latency or cloud budget exceeded)", "execution_time_ms": 160.611, "actual_total_time_ms": 1117.17, "status": "success", "error_message": null}
+INFO:     127.0.0.1:53811 - "POST /resize HTTP/1.1" 200 OK
+2026-04-25 08:13:09,189 | INFO | edge_cloud_router | {"request_id": "a2e49631-e12a-4fdd-aad2-752f385e2576", "filename": "Medium_jpg.jpg", "file_size_bytes": 44979, "current_concurrency": 1, "edge_cpu_utilization": 7.4, "edge_memory_utilization": 72.1, "predicted_edge_latency_ms": 166.53913267164057, "predicted_cloud_latency_ms": 617.6016346311291, "predicted_cloud_cost_usd": 6.0474356025965925e-06, "routing_decision": "EDGE", "routing_mode": "normal", "reason": "Edge optimized (Lower predicted latency or cloud budget exceeded)", "execution_time_ms": 17.439, "actual_total_time_ms": 715.174, "status": "success", "error_message": null}
+INFO:     127.0.0.1:57475 - "POST /resize HTTP/1.1" 200 OK
+2026-04-25 08:13:34,288 | INFO | edge_cloud_router | {"request_id": "68a59cbd-06dd-4d02-9e64-c6b50fadd698", "filename": "LARGE_elevation.jpg", "file_size_bytes": 14488498, "current_concurrency": 1, "edge_cpu_utilization": 6.8, "edge_memory_utilization": 72.0, "predicted_edge_latency_ms": 1475.8839273272179, "predicted_cloud_latency_ms": 604.6017800994276, "predicted_cloud_cost_usd": 6.0018406300005515e-06, "routing_decision": "CLOUD", "routing_mode": "normal", "reason": "Cloud optimized (Lower predicted latency & within budget)", "execution_time_ms": 13525.645, "actual_total_time_ms": 14244.586, "status": "success", "error_message": null}
+INFO:     127.0.0.1:50089 - "POST /resize HTTP/1.1" 200 OK
+2026-04-25 08:13:59,062 | INFO | edge_cloud_router | {"request_id": "a13e2659-471b-4b76-be97-884cba08b419", "filename": "LARGE_elevation.jpg", "file_size_bytes": 14488498, "current_concurrency": 1, "edge_cpu_utilization": 4.9, "edge_memory_utilization": 72.0, "predicted_edge_latency_ms": 1475.7171025725163, "predicted_cloud_latency_ms": 604.6017800994276, "predicted_cloud_cost_usd": 6.0018406300005515e-06, "routing_decision": "CLOUD", "routing_mode": "normal", "reason": "Cloud optimized (Lower predicted latency & within budget)", "execution_time_ms": 3356.797, "actual_total_time_ms": 4080.619, "status": "success", "error_message": null}
+INFO:     127.0.0.1:65212 - "POST /resize HTTP/1.1" 200 OK
+2026-04-25 08:22:43,484 | INFO | edge_cloud_router | {"request_id": "5e0ad622-b8ec-4156-b5bb-2a2ae62bf05c", "filename": "Medium.jpg", "file_size_bytes": 99116, "current_concurrency": 1, "edge_cpu_utilization": 7.4, "edge_memory_utilization": 73.0, "predicted_edge_latency_ms": 173.73246733228416, "predicted_cloud_latency_ms": 611.7245342105155, "predicted_cloud_cost_usd": 5.968828041521499e-06, "routing_decision": "EDGE", "routing_mode": "normal", "reason": "Edge optimized (Lower predicted latency or cloud budget exceeded)", "execution_time_ms": 18.746, "actual_total_time_ms": 727.068, "status": "success", "error_message": null}
+INFO:     127.0.0.1:57413 - "POST /resize HTTP/1.1" 200 OK
+2026-04-25 08:22:48,329 | INFO | edge_cloud_router | {"request_id": "740afaf0-d683-4bc8-b7f8-c0ff79d0e721", "filename": "Medium.jpg", "file_size_bytes": 99116, "current_concurrency": 1, "edge_cpu_utilization": 10.2, "edge_memory_utilization": 72.8, "predicted_edge_latency_ms": 173.47064377012157, "predicted_cloud_latency_ms": 591.2007117577748, "predicted_cloud_cost_usd": 5.926390665111265e-06, "routing_decision": "EDGE", "routing_mode": "normal", "reason": "Edge optimized (Lower predicted latency or cloud budget exceeded)", "execution_time_ms": 18.511, "actual_total_time_ms": 93.443, "status": "success", "error_message": null}
+INFO:     127.0.0.1:57413 - "POST /resize HTTP/1.1" 200 OK
+WARNING:  WatchFiles detected changes in 'main.py'. Reloading...
+ INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [25884]
+WARNING:  WatchFiles detected changes in 'main.py'. Reloading...
+ Process SpawnProcess-2:
+Traceback (most recent call last):
+  File "C:\Users\mattt\AppData\Local\Programs\Python\Python311\Lib\multiprocessing\process.py", line 314, in _bootstrap
+    self.run()
+  File "C:\Users\mattt\AppData\Local\Programs\Python\Python311\Lib\multiprocessing\process.py", line 108, in run
+    self._target(*self._args, **self._kwargs)
+  File "C:\Users\mattt\Projects2\cmpe281-project\cmpe281-project\.venv\Lib\site-packages\uvicorn\_subprocess.py", line 73, in subprocess_started
+    sys.stdin = os.fdopen(stdin_fileno)  # pragma: full coverage
+                ^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen os>", line 1031, in fdopen
+  File "<frozen codecs>", line 309, in __init__
+KeyboardInterrupt
+2026-04-25 12:22:57,967 | INFO | botocore.credentials | Found credentials in shared credentials file: ~/.aws/credentials
+2026-04-25 12:22:58,592 | INFO | edge_cloud_router | Loading ML models (.pkl) into memory...
+INFO:     Started server process [26896]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [26896]
+INFO:     Stopping reloader process [44752]
