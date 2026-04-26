@@ -1,0 +1,84 @@
+---
+RecipeFormatVersion: '2020-01-25'
+ComponentName: cmpe281.decision_engine
+ComponentVersion: '1.0.0'
+ComponentDescription: |
+  Edge Decision Engine. FastAPI service that ingests image uploads, runs the
+  ML routing policy (Ridge + GBRT inference), and dispatches the work to
+  either the cloud Lambda (CLOUD path) or to cmpe281.edge_resizer over
+  Greengrass IPC (EDGE path).
+ComponentPublisher: CMPE281
+# Hard dependency: cmpe281.edge_resizer must be running before the decision
+# engine starts so that the first EDGE-routed request finds an IPC subscriber.
+ComponentDependencies:
+  cmpe281.edge_resizer:
+    VersionRequirement: '>=1.0.0'
+    DependencyType: HARD
+ComponentConfiguration:
+  DefaultConfiguration:
+    LogLevel: INFO
+    ApiHost: '0.0.0.0'
+    ApiPort: '8000'
+    S3BucketName: 'cmpe281-shared-benchmark-data-ep-v2'
+    LambdaName: 'cmpe281-shared-image-resizer'
+    ModelS3Prefix: 's3://cmpe281-shared-benchmark-data-ep-v2/models/'
+    AwsRegion: 'us-east-1'
+    MaxConcurrency: '2'
+    UserBudgetUsd: '0.000050'
+    accessControl:
+      aws.greengrass.ipc.pubsub:
+        cmpe281.decision_engine:pubsub:1:
+          policyDescription: |
+            Allow the decision engine to publish resize requests and subscribe
+            to resize responses on the local pub/sub bus.
+          operations:
+            - aws.greengrass#PublishToTopic
+            - aws.greengrass#SubscribeToTopic
+          resources:
+            - 'cmpe281/edge/resize/request'
+            - 'cmpe281/edge/resize/response'
+Manifests:
+  - Platform:
+      os: linux
+    Lifecycle:
+      Install:
+        # Runs once per deployment. Builds a venv, installs deps, and pulls the
+        # latest .pkl ML models from S3 (MLOps-driven, see docs/design-doc.md §4).
+        Script: |
+          set -euo pipefail
+          ARTIFACT_DIR="{artifacts:decompressedPath}/cmpe281.decision_engine"
+          VENV="${ARTIFACT_DIR}/.venv"
+
+          python3 -m venv "${VENV}"
+          "${VENV}/bin/pip" install --upgrade pip
+          "${VENV}/bin/pip" install -r "${ARTIFACT_DIR}/backend/requirements.txt"
+
+          # Download ML models from S3 into the same path main.py expects.
+          mkdir -p "${ARTIFACT_DIR}/backend/models"
+          aws s3 cp --recursive \
+              "{configuration:/ModelS3Prefix}" \
+              "${ARTIFACT_DIR}/backend/models/"
+
+          # Shared temp dir for IPC file-handoff with cmpe281.edge_resizer.
+          mkdir -p /tmp/cmpe281
+          chmod 1777 /tmp/cmpe281
+      Run:
+        Script: |
+          ARTIFACT_DIR="{artifacts:decompressedPath}/cmpe281.decision_engine"
+          export ARTIFACT_DIR
+          export API_HOST="{configuration:/ApiHost}"
+          export API_PORT="{configuration:/ApiPort}"
+          export S3_BUCKET_NAME="{configuration:/S3BucketName}"
+          export LAMBDA_NAME="{configuration:/LambdaName}"
+          export AWS_REGION="{configuration:/AwsRegion}"
+          export MAX_CONCURRENCY_THRESHOLD="{configuration:/MaxConcurrency}"
+          export USER_BUDGET_USD="{configuration:/UserBudgetUsd}"
+          export USE_GREENGRASS_IPC="true"
+          export RESIZE_REQUEST_TOPIC="cmpe281/edge/resize/request"
+          export RESIZE_RESPONSE_TOPIC="cmpe281/edge/resize/response"
+          export RESIZE_TEMP_DIR="/tmp/cmpe281"
+          exec "${ARTIFACT_DIR}/start.sh"
+        RequiresPrivilege: false
+    Artifacts:
+      - URI: 's3://__ARTIFACT_BUCKET__/components/cmpe281.decision_engine/1.0.0/cmpe281.decision_engine.zip'
+        Unarchive: ZIP

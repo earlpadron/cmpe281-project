@@ -4,3 +4,9 @@ python-multipart
 boto3
 python-dotenv
 Pillow
+joblib
+scikit-learn
+pandas
+psutil
+# Greengrass v2 IPC SDK -- only required when USE_GREENGRASS_IPC=true
+awsiotsdk>=1.21.0

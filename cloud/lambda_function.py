@@ -1,15 +1,23 @@
 import boto3
 import json
-import os
-from PIL import Image
 from io import BytesIO
+
+from PIL import Image
+
+# `resize_lib` is the shared resize module. It lives at
+# `backend/lib/resize.py` and is copied into the Lambda zip + the Greengrass
+# component artifact at build time so cloud and edge run identical code.
+try:
+    from resize_lib import resize_bytes
+except ImportError:  # pragma: no cover - local/dev fallback
+    resize_bytes = None
 
 s3 = boto3.client('s3')
 
+
 def lambda_handler(event, context):
-    """ AWS Lambda function to process an image from S3. It resizes the image to 800x800 and returns the processing latency. """
+    """AWS Lambda image resizer. Routes a put_object payload through the shared resize core."""
     try:
-        # Catch proactive warming ping
         if 'warm_ping' in event:
             print("Warming ping received. Container initialized.")
             return {
@@ -17,30 +25,30 @@ def lambda_handler(event, context):
                 'body': json.dumps({'message': 'Container warmed successfully.'})
             }
 
-        # get bucket and key from the event
         bucket = event['bucket']
         key = event['key']
 
-        # download image from S3 to memroy
         response = s3.get_object(Bucket=bucket, Key=key)
         img_data = response['Body'].read()
 
-        # open image with Pillow
-        img = Image.open(BytesIO(img_data))
-        img_format = img.format # e.g., 'JPEG', 'PNG'
+        if resize_bytes is not None:
+            img_format = Image.open(BytesIO(img_data)).format
+            buffer_bytes = resize_bytes(img_data, img_format=img_format)
+        else:
+            img = Image.open(BytesIO(img_data))
+            img_format = img.format
+            resized = img.resize((800, 800), Image.Resampling.LANCZOS)
+            buf = BytesIO()
+            resized.save(buf, format=img_format)
+            buffer_bytes = buf.getvalue()
 
-        # perform the exact same resize workload as the Edge
-        resized_img = img.resize((800, 800), Image.Resampling.LANCZOS)
-
-        # save the resized image to a memory buffer 
-        buffer = BytesIO()
-        resized_img.save(buffer, format=img_format)
-        buffer.seek(0)
-
-        # upload the resized image back to S3
-        # we add 'resized/' prefix to keep things organized
         new_key = f"resized/{key}"
-        s3.put_object(Bucket=bucket, Key=new_key, Body=buffer, ContentType=f"image/{img_format.lower()}")
+        s3.put_object(
+            Bucket=bucket,
+            Key=new_key,
+            Body=buffer_bytes,
+            ContentType=f"image/{img_format.lower()}",
+        )
 
         return {
             'statusCode': 200,

@@ -84,3 +84,67 @@ scp pi@<pi-ip-address>:~/cmpe281-project/benchmark_results_*.csv ./
 
 ### Important Hardware Note
 Ensure your Raspberry Pi has adequate cooling (heatsink or fan). Running 1,000 consecutive image resizes will put a sustained 100% load on the CPU, which can cause **Thermal Throttling**. If the Pi gets too hot, it will slow down, and your latency data will become inconsistent!
+
+---
+
+## 6. (Optional) Run the Edge Pipeline as AWS IoT Greengrass v2 Components
+
+Sections 1–5 cover the *manual* deployment where you SSH into the Pi and run
+`uvicorn` by hand. For a production-grade setup, the EDGE pipeline can be
+managed by **AWS IoT Greengrass v2** instead. The image resize is split into
+its own component so the API stays responsive even while resizes are in flight.
+
+### Architecture
+| Component | Role | Source |
+|---|---|---|
+| `cmpe281.decision_engine` | Edge Decision Engine — FastAPI + ML routing policy | `backend/` |
+| `cmpe281.edge_resizer` | Pillow image resizer (subscribes to local IPC topic) | `greengrass/components/cmpe281.edge_resizer/artifacts/worker.py` |
+
+The two components communicate over Greengrass local pub/sub on the topics
+`cmpe281/edge/resize/request` and `cmpe281/edge/resize/response`. Image bytes
+are exchanged via `/tmp/cmpe281/<request_id>.{in,out}.<ext>` to avoid IPC
+payload size limits.
+
+### One-time AWS provisioning (admin)
+1. Create an S3 bucket for component artifacts (e.g. `cmpe281-greengrass-artifacts`).
+2. Create the Greengrass Token Exchange Service role:
+   ```bash
+   aws iam create-role \
+     --role-name GreengrassV2TokenExchangeRole \
+     --assume-role-policy-document file://greengrass/infra/tes-trust-policy.json
+
+   # Edit greengrass/infra/tes-permission-policy.json and replace
+   # __ARTIFACT_BUCKET__ with your actual bucket name first.
+   aws iam put-role-policy \
+     --role-name GreengrassV2TokenExchangeRole \
+     --policy-name GreengrassV2TokenExchangeRoleAccess \
+     --policy-document file://greengrass/infra/tes-permission-policy.json
+   ```
+
+### On the Pi (one-time)
+```bash
+cd cmpe281-project/greengrass/scripts
+AWS_REGION=us-east-1 ./bootstrap_pi.sh cmpe281-pi-01 cmpe281-edge-fleet
+```
+This installs the Greengrass v2 nucleus as a systemd service and registers the
+Pi as a managed core device.
+
+### Publish components (dev machine)
+```bash
+export ARTIFACT_BUCKET=cmpe281-greengrass-artifacts
+./publish_component.sh cmpe281.edge_resizer    1.0.0
+./publish_component.sh cmpe281.decision_engine 1.0.0
+```
+The publish script copies `backend/lib/resize.py` into each component as
+`resize_lib.py` so cloud Lambda and edge Greengrass run identical resize code.
+
+### Deploy
+```bash
+./deploy.sh cmpe281-edge-fleet
+```
+
+### Verify
+```bash
+ssh pi 'sudo tail -f /greengrass/v2/logs/cmpe281.decision_engine.log /greengrass/v2/logs/cmpe281.edge_resizer.log'
+curl http://<pi-ip>:8000/health    # expect "edge_backend": "greengrass"
+```

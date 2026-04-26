@@ -10,6 +10,7 @@ whether to process the image locally (Edge) or send it to AWS (Cloud).
 """
 
 # --- Standard Library Imports ---
+import os         # Used to read environment variables (Greengrass-driven config)
 import uuid       # Used to generate unique IDs for each image request
 import json       # Used to parse and format JSON data for AWS payloads
 import asyncio    # Used for running asynchronous tasks without blocking the main server
@@ -26,6 +27,12 @@ from fastapi.responses import JSONResponse, Response
 import boto3      # The official AWS SDK for Python. Used to talk to S3 and Lambda.
 import psutil     # Used to sample the Raspberry Pi's CPU and Memory utilization.
 from PIL import Image  # Python Imaging Library (Pillow). Used for local image resizing.
+
+# --- Local Imports ---
+# Shared resize core. When the API runs as a Greengrass component, the actual
+# Pillow work is delegated to the cmpe281.edge_resizer component over IPC and this
+# in-process implementation is only used as a fallback (e.g. local dev mode).
+from lib.resize import resize_bytes
 
 # ---------------------------------------------------------
 # FastAPI App Initialization
@@ -52,16 +59,22 @@ app.add_middleware(
 # ---------------------------------------------------------
 # System Configuration Variables
 # ---------------------------------------------------------
-# These variables define the hardcoded rules and AWS resource names for our framework.
-BUCKET_NAME = "cmpe281-shared-benchmark-data-ep-v2" # The globally unique S3 bucket we created
-LAMBDA_NAME = "cmpe281-shared-image-resizer"          # The name of our deployed AWS Lambda function
+# Resource names default to the shared-account values but can be overridden by
+# environment variables -- the Greengrass recipe injects these so the same code
+# runs in dev (local uvicorn) and prod (Greengrass component) unchanged.
+BUCKET_NAME = os.environ.get("S3_BUCKET_NAME", "cmpe281-shared-benchmark-data-ep-v2")
+LAMBDA_NAME = os.environ.get("LAMBDA_NAME", "cmpe281-shared-image-resizer")
 
-# Concurrency is our main bottleneck on the Edge. If we try to resize 3 images at once 
+# When true, the EDGE execution path delegates to the cmpe281.edge_resizer Greengrass
+# component over IPC. When false (default for local dev), we resize in-process.
+USE_GREENGRASS_IPC = os.environ.get("USE_GREENGRASS_IPC", "false").lower() in ("1", "true", "yes")
+
+# Concurrency is our main bottleneck on the Edge. If we try to resize 3 images at once
 # on a Raspberry Pi, it might overheat or crash. This is our safety limit.
-MAX_CONCURRENCY_THRESHOLD = 2                  
+MAX_CONCURRENCY_THRESHOLD = int(os.environ.get("MAX_CONCURRENCY_THRESHOLD", "2"))
 
 # The maximum amount of money (in USD) a user is willing to spend to process an image in the cloud.
-USER_BUDGET_USD = 0.000050                     
+USER_BUDGET_USD = float(os.environ.get("USER_BUDGET_USD", "0.000050"))
 
 # ---------------------------------------------------------
 # Global State & AWS Clients
@@ -173,26 +186,31 @@ def proactive_warming_ping():
 # ---------------------------------------------------------
 # Execution Tasks
 # ---------------------------------------------------------
-def process_image_edge(image_bytes: bytes, img_format: str) -> bytes:
+def process_image_edge_inproc(image_bytes: bytes, img_format: str) -> bytes:
     """
-    Path A: Executes the heavy image resizing locally on the Raspberry Pi's CPU.
+    Path A (in-process): runs the shared resize core directly on the API
+    worker thread. Used for local development when Greengrass IPC is disabled.
     """
-    print("[Execution] Processing on Edge Node...")
-    # Load the raw bytes into a Pillow Image object in memory
-    img = Image.open(BytesIO(image_bytes))
-    
-    # Perform the computationally expensive resize operation (using high-quality LANCZOS filter)
-    resized_img = img.resize((800, 800), Image.Resampling.LANCZOS)
-    
-    # Save the processed image back into a raw byte buffer to send back to the user
-    buffer = BytesIO()
-    
-    # Edge case: Pillow expects 'JPEG' instead of 'JPG'
-    save_format = img_format.upper() if img_format else "JPEG"
-    if save_format == "JPG": save_format = "JPEG"
-    
-    resized_img.save(buffer, format=save_format)
-    return buffer.getvalue() # Return the raw bytes
+    print("[Execution] Processing on Edge Node (in-process)...")
+    return resize_bytes(image_bytes, img_format=img_format)
+
+
+async def process_image_edge_ipc(image_bytes: bytes, img_format: str) -> bytes:
+    """
+    Path A (Greengrass): delegates the resize to the cmpe281.edge_resizer
+    component over local Greengrass IPC. Bytes travel via /tmp/cmpe281/ files
+    rather than the IPC payload so multi-MB images go through cleanly.
+    """
+    print("[Execution] Processing on Edge Node (Greengrass IPC -> cmpe281.edge_resizer)...")
+    from ipc_client import get_client
+    return await get_client().resize(image_bytes, img_format=img_format)
+
+
+async def process_image_edge(image_bytes: bytes, img_format: str) -> bytes:
+    """Single entry point for the EDGE path; dispatches based on USE_GREENGRASS_IPC."""
+    if USE_GREENGRASS_IPC:
+        return await process_image_edge_ipc(image_bytes, img_format)
+    return await asyncio.to_thread(process_image_edge_inproc, image_bytes, img_format)
 
 def process_image_cloud(image_bytes: bytes, filename: str) -> dict:
     """
@@ -233,10 +251,30 @@ def process_image_cloud(image_bytes: bytes, filename: str) -> dict:
 # API Endpoints (The URLs the frontend talks to)
 # ---------------------------------------------------------
 
+@app.on_event("startup")
+async def _warm_ipc_client():
+    """If running under Greengrass, eagerly establish the IPC subscription so
+    the first user request doesn't pay the connect+subscribe penalty."""
+    if not USE_GREENGRASS_IPC:
+        return
+    try:
+        from ipc_client import get_client
+        await get_client().start()
+        print("[Startup] Greengrass IPC client connected to cmpe281.edge_resizer.")
+    except Exception as exc:  # noqa: BLE001
+        # Don't crash the API if IPC is unavailable; we'll surface this on /health.
+        print(f"[Startup] WARNING: Greengrass IPC unavailable: {exc}")
+
+
 @app.get("/health")
 def health():
     """A simple endpoint used by load balancers or monitors to check if the Pi is alive."""
-    return {"status": "ok", "active_tasks": active_tasks}
+    return {
+        "status": "ok",
+        "active_tasks": active_tasks,
+        "edge_backend": "greengrass" if USE_GREENGRASS_IPC else "in-process",
+        "models_loaded": edge_lat_model is not None,
+    }
 
 @app.post("/resize")
 async def resize_image(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
@@ -306,17 +344,19 @@ async def resize_image(background_tasks: BackgroundTasks, file: UploadFile = Fil
             
             try:
                 img_format = file.content_type.split("/")[-1] if file.content_type else "JPEG"
-                
-                # asyncio.to_thread() is CRITICAL here. Image resizing blocks the CPU.
-                # By pushing it to a separate thread, the main FastAPI server can still 
-                # accept new HTTP requests from other users while the resize happens.
-                processed_bytes = await asyncio.to_thread(process_image_edge, image_bytes, img_format)
-                
-                # Return the physical resized image file directly to the user's browser.
+
+                # process_image_edge is async: it either awaits the Greengrass IPC
+                # round-trip OR off-loads the in-process Pillow call to a thread,
+                # depending on USE_GREENGRASS_IPC.
+                processed_bytes = await process_image_edge(image_bytes, img_format)
+
                 return Response(
-                    content=processed_bytes, 
+                    content=processed_bytes,
                     media_type=file.content_type,
-                    headers={"X-Routing-Decision": "EDGE"}
+                    headers={
+                        "X-Routing-Decision": "EDGE",
+                        "X-Edge-Backend": "greengrass" if USE_GREENGRASS_IPC else "in-process",
+                    },
                 )
             except Exception as e:
                 raise HTTPException(status_code=500, detail=f"Edge Processing Failed: {str(e)}")

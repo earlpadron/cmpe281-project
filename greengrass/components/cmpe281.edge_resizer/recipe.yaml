@@ -1,0 +1,53 @@
+---
+RecipeFormatVersion: '2020-01-25'
+ComponentName: cmpe281.edge_resizer
+ComponentVersion: '1.0.0'
+ComponentDescription: |
+  Edge-side image resizer. A long-running Pillow worker that subscribes to the
+  local Greengrass IPC topic cmpe281/edge/resize/request and publishes results
+  to cmpe281/edge/resize/response. The shared resize core lives in resize_lib.py
+  so this component and the cloud Lambda produce byte-identical thumbnails.
+ComponentPublisher: CMPE281
+ComponentConfiguration:
+  DefaultConfiguration:
+    LogLevel: INFO
+    MaxInflight: '2'
+    RequestTopic: 'cmpe281/edge/resize/request'
+    ResponseTopic: 'cmpe281/edge/resize/response'
+    accessControl:
+      aws.greengrass.ipc.pubsub:
+        cmpe281.edge_resizer:pubsub:1:
+          policyDescription: |
+            Allow this component to subscribe to the resize request topic and
+            publish to the resize response topic.
+          operations:
+            - aws.greengrass#SubscribeToTopic
+            - aws.greengrass#PublishToTopic
+          resources:
+            - 'cmpe281/edge/resize/request'
+            - 'cmpe281/edge/resize/response'
+Manifests:
+  - Platform:
+      os: linux
+    Lifecycle:
+      Install:
+        Script: |
+          set -euo pipefail
+          python3 -m venv "{artifacts:decompressedPath}/cmpe281.edge_resizer/.venv"
+          "{artifacts:decompressedPath}/cmpe281.edge_resizer/.venv/bin/pip" install --upgrade pip
+          "{artifacts:decompressedPath}/cmpe281.edge_resizer/.venv/bin/pip" install \
+            -r "{artifacts:decompressedPath}/cmpe281.edge_resizer/requirements.txt"
+          mkdir -p /tmp/cmpe281
+          chmod 1777 /tmp/cmpe281
+      Run:
+        Script: |
+          export LOG_LEVEL="{configuration:/LogLevel}"
+          export RESIZE_MAX_INFLIGHT="{configuration:/MaxInflight}"
+          export RESIZE_REQUEST_TOPIC="{configuration:/RequestTopic}"
+          export RESIZE_RESPONSE_TOPIC="{configuration:/ResponseTopic}"
+          exec "{artifacts:decompressedPath}/cmpe281.edge_resizer/.venv/bin/python" \
+            "{artifacts:decompressedPath}/cmpe281.edge_resizer/worker.py"
+        RequiresPrivilege: false
+    Artifacts:
+      - URI: 's3://__ARTIFACT_BUCKET__/components/cmpe281.edge_resizer/1.0.0/cmpe281.edge_resizer.zip'
+        Unarchive: ZIP

@@ -1,0 +1,2 @@
+Pillow>=10.0.0
+awsiotsdk>=1.21.0
