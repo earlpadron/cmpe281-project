@@ -130,7 +130,7 @@ USE_LYAPUNOV_ROUTING = True
 
 # V controls how strongly we penalize cloud cost.
 # Higher V = more conservative about using cloud.
-LYAPUNOV_V = 200000.0
+LYAPUNOV_V = 10000.0
 
 # Extra penalty multiplier for choosing EDGE when the system is already busy.
 EDGE_QUEUE_WEIGHT = 1.0
