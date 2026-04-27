@@ -22,8 +22,8 @@
         "s3:GetBucketLocation"
       ],
       "Resource": [
-        "arn:aws:s3:::__ARTIFACT_BUCKET__",
-        "arn:aws:s3:::__ARTIFACT_BUCKET__/*"
+        "arn:aws:s3:::cmpe281-greengrass-artifacts",
+        "arn:aws:s3:::cmpe281-greengrass-artifacts/*"
       ]
     },
     {

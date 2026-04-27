@@ -31,10 +31,12 @@ cat >"${DEPLOY_JSON}" <<JSON
   },
   "cmpe281.decision_engine": {
     "componentVersion": "${DECISION_ENGINE_VERSION}",
-    "configurationUpdate": {}
+    "configurationUpdate": {
+    	"reset": [""]
+    }
   },
   "aws.greengrass.Cli": {
-    "componentVersion": "2.13.0"
+    "componentVersion": "2.16.1"
   }
 }
 JSON

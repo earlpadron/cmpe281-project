@@ -1,7 +1,7 @@
 ---
 RecipeFormatVersion: '2020-01-25'
 ComponentName: cmpe281.edge_resizer
-ComponentVersion: '1.0.0'
+ComponentVersion: '1.0.4'
 ComponentDescription: |
   Edge-side image resizer. A long-running Pillow worker that subscribes to the
   local Greengrass IPC topic cmpe281/edge/resize/request and publishes results
@@ -49,5 +49,5 @@ Manifests:
             "{artifacts:decompressedPath}/cmpe281.edge_resizer/worker.py"
         RequiresPrivilege: false
     Artifacts:
-      - URI: 's3://__ARTIFACT_BUCKET__/components/cmpe281.edge_resizer/1.0.0/cmpe281.edge_resizer.zip'
+      - URI: 's3://__ARTIFACT_BUCKET__/components/cmpe281.edge_resizer/1.0.4/cmpe281.edge_resizer.zip'
         Unarchive: ZIP
