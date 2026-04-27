@@ -128,7 +128,7 @@ Detailed guides for setting up the cloud infrastructure are located in the `docs
 *   `docs/SHARED_ACCOUNT_SETUP_GUIDE.md`: Instructions for the AWS Admin to create the S3 buckets and IAM Roles.
 *   `docs/AWS_SETUP_GUIDE.md`: Explains how the CLI deployment maps to the AWS Console.
 *   `docs/PI_SETUP_GUIDE.md`: Instructions for preparing the physical Raspberry Pi environment, **including the optional AWS IoT Greengrass v2 deployment** (Section 6).
-*   `docs/design-doc.md`: The Master's-level Software Design Document explaining the architectural rationale, S3 pointer patterns, and IoT Core limitations.
+*   `docs/design-doc.md`: Software Design Document explaining the architectural rationale, S3 pointer patterns, and IoT Core limitations.
 
 ### Shared resize library (Lambda packaging)
 `cloud/lambda_function.py` does not contain the resize logic itself — it imports
