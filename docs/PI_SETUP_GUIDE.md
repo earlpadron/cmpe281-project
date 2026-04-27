@@ -121,7 +121,7 @@ payload size limits.
      --policy-document file://greengrass/infra/tes-permission-policy.json
    ```
 
-### On the Pi (one-time)
+### On the Pi (one-time) 
 ```bash
 cd cmpe281-project/greengrass/scripts
 AWS_REGION=us-east-1 ./bootstrap_pi.sh cmpe281-pi-01 cmpe281-edge-fleet
@@ -148,3 +148,7 @@ The publish script copies `backend/lib/resize.py` into each component as
 ssh pi 'sudo tail -f /greengrass/v2/logs/cmpe281.decision_engine.log /greengrass/v2/logs/cmpe281.edge_resizer.log'
 curl http://<pi-ip>:8000/health    # expect "edge_backend": "greengrass"
 ```
+### Check deployment
+'''aws greengrassv2 get-deployment \
+  --deployment-id 6c651b6b-a963-4e6f-b4ec-8e4f54d1382b \
+  --region us-east-1```
