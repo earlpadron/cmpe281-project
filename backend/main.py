@@ -105,6 +105,17 @@ def get_hardware_metrics():
         "edge_memory_utilization": psutil.virtual_memory().percent
     }
 
+
+def is_valid_jpeg_upload(upload: UploadFile, image_bytes: bytes) -> bool:
+    """Strict JPEG gate: extension, MIME type, and file signature must match."""
+    allowed_mime_types = {"image/jpeg", "image/jpg", "image/pjpeg"}
+    filename = (upload.filename or "").lower()
+    content_type = (upload.content_type or "").lower()
+    has_jpeg_extension = filename.endswith(".jpg") or filename.endswith(".jpeg")
+    has_jpeg_mime = content_type in allowed_mime_types
+    has_jpeg_signature = len(image_bytes) >= 3 and image_bytes[:3] == b"\xff\xd8\xff"
+    return has_jpeg_extension and has_jpeg_mime and has_jpeg_signature
+
 # ---------------------------------------------------------
 # Machine Learning Models (Loaded into memory on startup)
 # ---------------------------------------------------------
@@ -299,6 +310,12 @@ async def resize_image(background_tasks: BackgroundTasks, file: UploadFile = Fil
         
         if file_size == 0:
             raise HTTPException(status_code=400, detail="Empty file uploaded.")
+
+        if not is_valid_jpeg_upload(file, image_bytes):
+            raise HTTPException(
+                status_code=400,
+                detail="Only JPEG files are allowed (.jpg/.jpeg with image/jpeg content type).",
+            )
             
         # ========================================================
         # STEP 1: ROUTING POLICY EVALUATION
