@@ -1,0 +1,6 @@
+# Optional: training + evaluation plots (run from repo root: pip install -r scripts/requirements-train.txt)
+pandas
+numpy
+scikit-learn
+joblib
+matplotlib
