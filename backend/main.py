@@ -119,7 +119,7 @@ LAMBDA_NAME = "cmpe281-shared-image-resizer"          # The name of our deployed
 MAX_CONCURRENCY_THRESHOLD = 2                  
 
 # The maximum amount of money (in USD) a user is willing to spend to process an image in the cloud.
-USER_BUDGET_USD = 0.000050                     
+USER_BUDGET_USD = 0.00050                     
 
 # Temporary testing flag: force all requests to cloud path.
 # Set back to False when you want normal auto-routing behavior.
@@ -418,6 +418,11 @@ async def resize_image(background_tasks: BackgroundTasks, file: UploadFile = Fil
     execution_time_ms: float | None = None
     error_message: str | None = None
     status = "error"
+
+    edge_score = None
+    cloud_score = None
+    queue_pressure = None
+    cost_ratio = None
 
     with task_lock:
         active_tasks += 1

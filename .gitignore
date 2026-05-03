@@ -3,6 +3,9 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+/backend/test_images/*
+results/*
+plots/*
 # Virtual Environment
 .venv/
 venv/
